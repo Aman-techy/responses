@@ -38,32 +38,70 @@ def load_data():
         st.error(f"Error loading data: {e}")
         return pd.DataFrame()
 
-def generate_eod_image(date_str, count, amount, top_bde):
-    fig, ax = plt.subplots(figsize=(8, 4))
+def generate_eod_image(date_str, df):
+    # Prepare data for table
+    table_data = []
+    headers = ['BDE Name', 'Company', 'Amount']
+    
+    # Sort by BDE
+    if 'BDE NAME' in df.columns:
+        df_sorted = df.sort_values('BDE NAME')
+    else:
+        df_sorted = df
+        
+    total_amount = 0
+    for _, row in df_sorted.iterrows():
+        bde = str(row.get('BDE NAME', 'N/A'))
+        # Truncate company name if too long
+        company = str(row.get('COMPANY NAME', 'N/A'))
+        if len(company) > 30:
+            company = company[:27] + "..."
+            
+        amount = row.get('CLOSED AMOUNT', 0)
+        total_amount += amount
+        table_data.append([bde, company, f"₹{amount:,.0f}"])
+        
+    # Add Total Row
+    table_data.append(['TOTAL', f"{len(df)} Responses", f"₹{total_amount:,.0f}"])
+
+    # Calculate figure height
+    # Header + Rows
+    num_rows = len(table_data) + 1 
+    # Base height 1.0 + 0.5 per row
+    fig_height = 1.0 + (num_rows * 0.5)
+    
+    fig, ax = plt.subplots(figsize=(10, fig_height))
     ax.axis('off')
     
-    # Background color
-    fig.patch.set_facecolor('#f0f2f6')
-    
     # Title
-    ax.text(0.5, 0.9, f"EOD Report - {date_str}", ha='center', va='center', fontsize=20, weight='bold', color='#0e1117')
+    ax.set_title(f"EOD Report - {date_str}", fontsize=16, weight='bold', pad=20)
     
-    # Metrics
-    ax.text(0.25, 0.6, "Responses", ha='center', va='center', fontsize=14, color='#555')
-    ax.text(0.25, 0.45, str(count), ha='center', va='center', fontsize=24, weight='bold', color='#0068c9')
+    # Table
+    the_table = ax.table(cellText=table_data,
+                         colLabels=headers,
+                         loc='center',
+                         cellLoc='left',
+                         colWidths=[0.25, 0.5, 0.25])
     
-    ax.text(0.75, 0.6, "Closed Amount", ha='center', va='center', fontsize=14, color='#555')
-    ax.text(0.75, 0.45, f"₹{amount:,.0f}", ha='center', va='center', fontsize=24, weight='bold', color='#00cc96')
+    the_table.auto_set_font_size(False)
+    the_table.set_fontsize(12)
+    the_table.scale(1, 2) # Increase row height
     
-    # Top BDE
-    if top_bde:
-        ax.text(0.5, 0.2, f"Top BDE: {top_bde}", ha='center', va='center', fontsize=12, style='italic', color='#333')
-        
+    # Styling
+    for (row, col), cell in the_table.get_celld().items():
+        if row == 0: # Header
+            cell.set_text_props(weight='bold', color='white')
+            cell.set_facecolor('#40466e')
+        elif row == len(table_data): # Total row
+            cell.set_text_props(weight='bold')
+            cell.set_facecolor('#f0f2f6')
+            
     plt.tight_layout()
     
     buf = io.BytesIO()
     plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')
     buf.seek(0)
+    plt.close(fig)
     return buf
 
 def main():
@@ -130,17 +168,8 @@ def main():
         with col_today2:
             st.write("### EOD Report")
             if not todays_responses.empty:
-                # Calculate metrics for today
-                today_count = len(todays_responses)
-                today_amount = todays_responses['CLOSED AMOUNT'].sum() if 'CLOSED AMOUNT' in todays_responses.columns else 0
-                
-                # Find top BDE for today
-                top_bde = None
-                if 'BDE NAME' in todays_responses.columns:
-                    top_bde = todays_responses['BDE NAME'].mode().iloc[0] if not todays_responses['BDE NAME'].mode().empty else "N/A"
-                
                 # Generate Image
-                img_buf = generate_eod_image(today.strftime('%Y-%m-%d'), today_count, today_amount, top_bde)
+                img_buf = generate_eod_image(today.strftime('%Y-%m-%d'), todays_responses)
                 
                 st.image(img_buf, caption="Preview of EOD Report", use_container_width=True)
                 
