@@ -41,7 +41,7 @@ def load_data():
 def generate_eod_image(date_str, df):
     # Prepare data for table
     table_data = []
-    headers = ['BDE Name', 'Company', 'Amount']
+    headers = ['BDE Name', 'Company', 'Plan', 'Exp. Closure']
     
     # Sort by BDE
     if 'BDE NAME' in df.columns:
@@ -49,20 +49,26 @@ def generate_eod_image(date_str, df):
     else:
         df_sorted = df
         
-    total_amount = 0
     for _, row in df_sorted.iterrows():
         bde = str(row.get('BDE NAME', 'N/A'))
         # Truncate company name if too long
         company = str(row.get('COMPANY NAME', 'N/A'))
-        if len(company) > 30:
-            company = company[:27] + "..."
+        if len(company) > 20:
+            company = company[:17] + "..."
             
-        amount = row.get('CLOSED AMOUNT', 0)
-        total_amount += amount
-        table_data.append([bde, company, f"₹{amount:,.0f}"])
+        plan = str(row.get('PLAN', 'N/A'))
+        
+        exp_closure = row.get('Expected Closure Date', pd.NaT)
+        if pd.notna(exp_closure):
+            # Format as DD-Mon (e.g., 30-Nov)
+            exp_closure_str = exp_closure.strftime('%d-%b')
+        else:
+            exp_closure_str = "-"
+            
+        table_data.append([bde, company, plan, exp_closure_str])
         
     # Add Total Row
-    table_data.append(['TOTAL', f"{len(df)} Responses", f"₹{total_amount:,.0f}"])
+    table_data.append(['TOTAL', f"{len(df)} Responses", "", ""])
 
     # Calculate figure height
     # Header + Rows
@@ -70,7 +76,7 @@ def generate_eod_image(date_str, df):
     # Base height 1.0 + 0.5 per row
     fig_height = 1.0 + (num_rows * 0.5)
     
-    fig, ax = plt.subplots(figsize=(10, fig_height))
+    fig, ax = plt.subplots(figsize=(12, fig_height))
     ax.axis('off')
     
     # Title
@@ -81,7 +87,7 @@ def generate_eod_image(date_str, df):
                          colLabels=headers,
                          loc='center',
                          cellLoc='left',
-                         colWidths=[0.25, 0.5, 0.25])
+                         colWidths=[0.2, 0.35, 0.25, 0.2])
     
     the_table.auto_set_font_size(False)
     the_table.set_fontsize(12)
