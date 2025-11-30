@@ -22,6 +22,10 @@ def load_data():
         # Convert Timestamp to datetime
         if 'Timestamp' in df.columns:
             df['Timestamp'] = pd.to_datetime(df['Timestamp'], errors='coerce')
+
+        # Convert Expected Closure Date to datetime
+        if 'Expected Closure Date' in df.columns:
+            df['Expected Closure Date'] = pd.to_datetime(df['Expected Closure Date'], errors='coerce')
             
         # Convert CLOSED AMOUNT to numeric
         if 'CLOSED AMOUNT' in df.columns:
@@ -76,6 +80,48 @@ def main():
 
     st.markdown("---")
 
+    # Closure Insights Section
+    st.subheader("📅 Closure Insights")
+    
+    if 'Expected Closure Date' in filtered_df.columns:
+        today = pd.Timestamp.now().normalize()
+        
+        # Today's Closures
+        todays_closures = filtered_df[filtered_df['Expected Closure Date'].dt.normalize() == today]
+        
+        # Upcoming Closures (Next 7 days)
+        upcoming_closures = filtered_df[
+            (filtered_df['Expected Closure Date'].dt.normalize() > today) & 
+            (filtered_df['Expected Closure Date'].dt.normalize() <= today + pd.Timedelta(days=7))
+        ]
+        
+        tab1, tab2 = st.tabs(["Today's Closures", "Upcoming Closures (Next 7 Days)"])
+        
+        cols_to_show = [c for c in ['BDE NAME', 'COMPANY NAME', 'Expected Closure Date', 'PLAN', 'CLOSED AMOUNT', 'MOBILE NO'] if c in filtered_df.columns]
+
+        with tab1:
+            if not todays_closures.empty:
+                st.success(f"Found {len(todays_closures)} closures expected today!")
+                st.dataframe(
+                    todays_closures[cols_to_show],
+                    use_container_width=True
+                )
+            else:
+                st.info("No closures expected for today.")
+                
+        with tab2:
+            if not upcoming_closures.empty:
+                st.dataframe(
+                    upcoming_closures[cols_to_show].sort_values('Expected Closure Date'),
+                    use_container_width=True
+                )
+            else:
+                st.info("No upcoming closures in the next 7 days.")
+    else:
+        st.warning("Column 'Expected Closure Date' not found in data.")
+
+    st.markdown("---")
+
     # Charts
     col_chart1, col_chart2 = st.columns(2)
 
@@ -96,6 +142,11 @@ def main():
                 labels={'Count': 'Number of Responses', 'CLOSED AMOUNT': 'Revenue'}
             )
             st.plotly_chart(fig_bde, use_container_width=True)
+            
+            # Detailed BDE View
+            with st.expander("View Detailed BDE & Company List"):
+                display_cols = [c for c in ['BDE NAME', 'COMPANY NAME', 'Expected Closure Date', 'PLAN', 'CLOSED AMOUNT'] if c in filtered_df.columns]
+                st.dataframe(filtered_df[display_cols], use_container_width=True)
         else:
             st.info("No BDE data available for charts.")
 
