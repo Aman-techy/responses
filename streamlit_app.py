@@ -1,6 +1,8 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import matplotlib.pyplot as plt
+import io
 
 # Page configuration
 st.set_page_config(
@@ -35,6 +37,34 @@ def load_data():
     except Exception as e:
         st.error(f"Error loading data: {e}")
         return pd.DataFrame()
+
+def generate_eod_image(date_str, count, amount, top_bde):
+    fig, ax = plt.subplots(figsize=(8, 4))
+    ax.axis('off')
+    
+    # Background color
+    fig.patch.set_facecolor('#f0f2f6')
+    
+    # Title
+    ax.text(0.5, 0.9, f"EOD Report - {date_str}", ha='center', va='center', fontsize=20, weight='bold', color='#0e1117')
+    
+    # Metrics
+    ax.text(0.25, 0.6, "Responses", ha='center', va='center', fontsize=14, color='#555')
+    ax.text(0.25, 0.45, str(count), ha='center', va='center', fontsize=24, weight='bold', color='#0068c9')
+    
+    ax.text(0.75, 0.6, "Closed Amount", ha='center', va='center', fontsize=14, color='#555')
+    ax.text(0.75, 0.45, f"₹{amount:,.0f}", ha='center', va='center', fontsize=24, weight='bold', color='#00cc96')
+    
+    # Top BDE
+    if top_bde:
+        ax.text(0.5, 0.2, f"Top BDE: {top_bde}", ha='center', va='center', fontsize=12, style='italic', color='#333')
+        
+    plt.tight_layout()
+    
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+    buf.seek(0)
+    return buf
 
 def main():
     st.title("📊 Response Visualizer")
@@ -77,6 +107,51 @@ def main():
         st.metric("Total Responses", total_responses)
     with col2:
         st.metric("Total Closed Amount", f"₹{total_closed_amount:,.2f}")
+
+    st.markdown("---")
+
+    # Today's Activity Section
+    st.subheader("📝 Today's Activity")
+    
+    if 'Timestamp' in filtered_df.columns:
+        today = pd.Timestamp.now().normalize()
+        todays_responses = filtered_df[filtered_df['Timestamp'].dt.normalize() == today]
+        
+        col_today1, col_today2 = st.columns([2, 1])
+        
+        with col_today1:
+            if not todays_responses.empty:
+                st.success(f"Received {len(todays_responses)} new responses today!")
+                display_cols_today = [c for c in ['Timestamp', 'BDE NAME', 'COMPANY NAME', 'PLAN', 'CLOSED AMOUNT'] if c in filtered_df.columns]
+                st.dataframe(todays_responses[display_cols_today], use_container_width=True)
+            else:
+                st.info("No new responses received today.")
+
+        with col_today2:
+            st.write("### EOD Report")
+            if not todays_responses.empty:
+                # Calculate metrics for today
+                today_count = len(todays_responses)
+                today_amount = todays_responses['CLOSED AMOUNT'].sum() if 'CLOSED AMOUNT' in todays_responses.columns else 0
+                
+                # Find top BDE for today
+                top_bde = None
+                if 'BDE NAME' in todays_responses.columns:
+                    top_bde = todays_responses['BDE NAME'].mode().iloc[0] if not todays_responses['BDE NAME'].mode().empty else "N/A"
+                
+                # Generate Image
+                img_buf = generate_eod_image(today.strftime('%Y-%m-%d'), today_count, today_amount, top_bde)
+                
+                st.image(img_buf, caption="Preview of EOD Report", use_container_width=True)
+                
+                st.download_button(
+                    label="📥 Download EOD Report (PNG)",
+                    data=img_buf,
+                    file_name=f"EOD_Report_{today.strftime('%Y-%m-%d')}.png",
+                    mime="image/png"
+                )
+            else:
+                st.write("No data to generate report.")
 
     st.markdown("---")
 
