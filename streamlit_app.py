@@ -130,17 +130,42 @@ def main():
     plan_options = ['All Plans'] + sorted(df['PLAN'].dropna().unique().tolist()) if 'PLAN' in df.columns else ['All Plans']
     selected_plan = st.sidebar.selectbox("Filter by Plan", plan_options)
     
+    # Date Range Filter
+    st.sidebar.markdown("---")
+    enable_date_filter = st.sidebar.checkbox("Filter Dashboard by Date", value=False)
+    start_date, end_date = None, None
+    
+    if enable_date_filter:
+        date_range = st.sidebar.date_input(
+            "Select Date Range",
+            value=(pd.Timestamp.now().date(), pd.Timestamp.now().date()),
+            key="dashboard_date_range"
+        )
+        if isinstance(date_range, tuple):
+            if len(date_range) == 2:
+                start_date, end_date = date_range
+            elif len(date_range) == 1:
+                start_date = date_range[0]
+                end_date = start_date
+
     if st.sidebar.button("Refresh Data"):
         st.cache_data.clear()
         st.rerun()
 
-    # Apply Filters
-    filtered_df = df.copy()
+    # Apply BDE & Plan Filters (Base Data)
+    base_df = df.copy()
     if selected_bde != 'All BDEs':
-        filtered_df = filtered_df[filtered_df['BDE NAME'] == selected_bde]
+        base_df = base_df[base_df['BDE NAME'] == selected_bde]
     
     if selected_plan != 'All Plans':
-        filtered_df = filtered_df[filtered_df['PLAN'] == selected_plan]
+        base_df = base_df[base_df['PLAN'] == selected_plan]
+
+    # Apply Date Filter for Dashboard Views
+    filtered_df = base_df.copy()
+    if enable_date_filter and start_date and end_date and 'Timestamp' in filtered_df.columns:
+        # Filter by Timestamp (Response Date)
+        mask = (filtered_df['Timestamp'].dt.date >= start_date) & (filtered_df['Timestamp'].dt.date <= end_date)
+        filtered_df = filtered_df[mask]
 
     # Metrics
     total_responses = len(filtered_df)
@@ -154,35 +179,41 @@ def main():
 
     st.markdown("---")
 
-    # Today's Activity Section
-    st.subheader("📝 Today's Activity")
+    # Daily Activity & EOD Report Section
+    st.subheader("📝 Daily Activity & EOD Report")
     
-    if 'Timestamp' in filtered_df.columns:
-        today = pd.Timestamp.now().normalize()
-        todays_responses = filtered_df[filtered_df['Timestamp'].dt.normalize() == today]
+    if 'Timestamp' in base_df.columns:
+        # Date Picker for EOD Report
+        col_date, _ = st.columns([1, 3])
+        with col_date:
+            report_date = st.date_input("Select Date for Report", value=pd.Timestamp.now().date(), key="eod_date_picker")
+        
+        # Filter base_df (which has BDE/Plan filters but NO date range filter) by the specific report date
+        report_date_ts = pd.Timestamp(report_date)
+        daily_responses = base_df[base_df['Timestamp'].dt.date == report_date]
         
         col_today1, col_today2 = st.columns([2, 1])
         
         with col_today1:
-            if not todays_responses.empty:
-                st.success(f"Received {len(todays_responses)} new responses today!")
-                display_cols_today = [c for c in ['Timestamp', 'BDE NAME', 'COMPANY NAME', 'PLAN', 'CLOSED AMOUNT'] if c in filtered_df.columns]
-                st.dataframe(todays_responses[display_cols_today], use_container_width=True)
+            if not daily_responses.empty:
+                st.success(f"Found {len(daily_responses)} responses for {report_date.strftime('%d-%b-%Y')}!")
+                display_cols_today = [c for c in ['Timestamp', 'BDE NAME', 'COMPANY NAME', 'PLAN', 'CLOSED AMOUNT'] if c in daily_responses.columns]
+                st.dataframe(daily_responses[display_cols_today], use_container_width=True)
             else:
-                st.info("No new responses received today.")
+                st.info(f"No responses found for {report_date.strftime('%d-%b-%Y')}.")
 
         with col_today2:
-            st.write("### EOD Report")
-            if not todays_responses.empty:
+            st.write(f"### EOD Report ({report_date.strftime('%d-%b')})")
+            if not daily_responses.empty:
                 # Generate Image
-                img_buf = generate_eod_image(today.strftime('%Y-%m-%d'), todays_responses)
+                img_buf = generate_eod_image(report_date.strftime('%Y-%m-%d'), daily_responses)
                 
-                st.image(img_buf, caption="Preview of EOD Report", use_container_width=True)
+                st.image(img_buf, caption=f"EOD Report - {report_date.strftime('%d-%b')}", use_container_width=True)
                 
                 st.download_button(
                     label="📥 Download EOD Report (PNG)",
                     data=img_buf,
-                    file_name=f"EOD_Report_{today.strftime('%Y-%m-%d')}.png",
+                    file_name=f"EOD_Report_{report_date.strftime('%Y-%m-%d')}.png",
                     mime="image/png"
                 )
             else:
